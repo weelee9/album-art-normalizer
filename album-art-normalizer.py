@@ -2,6 +2,7 @@ import os, shutil, subprocess
 from settings import Settings
 from io import BytesIO
 from PIL import Image
+#asdf
 
 class Normalizer:
     def __init__(self, img_path):

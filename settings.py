@@ -8,6 +8,6 @@ class Settings:
         self.target_dim = 2000
         self.prequantize_limit = 5120
 
-        # Quantization settings
+        # Quantization settingsa
         self.speed = 1
         self.floyd = 1
