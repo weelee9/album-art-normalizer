@@ -118,6 +118,8 @@ class Compressor:
         subprocess.run(['jpegoptim.exe', '--quiet', '--strip-all', self.img_path])
 
 def batch_process():
+    """Processes all images in a given directory."""
+
     settings = Settings()
     valid_ext = settings.valid_ext
 
