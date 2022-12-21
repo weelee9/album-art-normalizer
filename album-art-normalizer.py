@@ -3,6 +3,7 @@ from settings import Settings
 from io import BytesIO
 from PIL import Image
 
+# test
 class Normalizer:
     def __init__(self, img_path):
         self.img = Image.open(img_path)
