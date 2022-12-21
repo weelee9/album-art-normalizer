@@ -1,7 +1,5 @@
 # album-art-normalizer
 
-Python script for normalizing album artwork.
-
 ## Features
  - Resizes album art to target dimensions.
  - Pads non 1:1 aspect ratio album art with transparency.
