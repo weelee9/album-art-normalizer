@@ -12,19 +12,20 @@ class Normalizer:
         self.settings = Settings()
         self.target_dim = self.settings.target_dim
         self.prequantize_limit = self.settings.prequantize_limit
+        self.resolution_thres = self.settings.resolution_thres
         self.output_path = self.settings.output_dir + '\\' + os.path.splitext(os.path.basename(img_path))[0]
 
     def normalize(self):
         """Normalizer driver function."""
 
         # Image is already normalized.
-        if (max(self.width, self.height) < self.target_dim and self.width == self.height):
+        if (self.width == self.height and max(self.width, self.height) < self.target_dim):
             self.img.close()
             shutil.move(self.img_path, self.settings.output_dir)
             return
         
-        if (min(self.width, self.height) > self.target_dim):
-            self.resize_image()
+        # Image is either not 1:1 aspect ratio OR dimensions are more than target
+        self.resize_image()
 
         if (self.width != self.height):
             self.pad_image()
@@ -37,32 +38,46 @@ class Normalizer:
     def resize_image(self):
         """
         Attempts to resize image to a target dimension and target file size. 
-        If transparency required (PNG), reduces dimensions in steps of 200 until target file size is met.
+        If transparency required (PNG), reduces dimensions in steps of 100
+        until target file size is met OR breaks resolution threshold.
         """
 
         target_dim = self.target_dim
 
-        # The image does not need transparency padding and can be saved as a JPEG.
-        # Size is less of a concern and reduction is performed with other tools.
-        if (self.width == self.height):
+        # Image is 1:1 aspect ratio but dimensions are more than target.
+        if (self.width == self.height and max(self.width, self.height) > target_dim):
             self.img.thumbnail((target_dim, target_dim), resample = Image.Resampling.LANCZOS)
             return
 
-        # Result image needs transparency padding and must be stored as PNG.
+        # Image needs padding, will result in PNG.
+        # Resizing in steps to achieve size threshold before quantization.
+        temp_img = self.img.copy()
+
         while True:
-            temp_img = self.img.copy()
-            temp_img.thumbnail((target_dim, target_dim), resample = Image.Resampling.LANCZOS)
+            width, height = temp_img.size
+
+            if (max(width, height) > target_dim):
+                temp_img.thumbnail((target_dim, target_dim), resample = Image.Resampling.LANCZOS)
+            else:
+                target_dim = max(width, height)
 
             temp_store = BytesIO()
             temp_img.save(temp_store, 'png', optimize = True)
 
-            temp_store_size_KB = int(temp_img.tell() / 1024)
+            temp_store_size_KB = temp_store.tell() // 1024
 
-            if (temp_store_size_KB < self.prequantize_limit):
-                self.img = temp_img
+            # Resizes actual copy if filesize is under prequantize limit.
+            # Force resize if resolution goes under threshold regardless of filesize.
+            if (temp_store_size_KB < self.prequantize_limit or (target_dim - 100) < self.resolution_thres):
+                temp_img.close()
+                self.img.thumbnail((target_dim, target_dim), resample = Image.Resampling.LANCZOS)
+                self.update_dim()
                 return
             else:
-                target_dim -= 200
+                target_dim -= 100
+
+    def update_dim(self):
+        self.width, self.height = self.img.size
 
     def pad_image(self):
         """Pads non 1:1 aspect ratio image with transparency."""

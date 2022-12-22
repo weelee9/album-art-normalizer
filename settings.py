@@ -7,6 +7,7 @@ class Settings:
         # Normalization settings
         self.target_dim = 2000
         self.prequantize_limit = 5120
+        self.resolution_thres = 1000
 
         # Quantization settings
         self.speed = 1
