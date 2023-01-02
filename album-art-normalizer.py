@@ -181,6 +181,19 @@ class Compressor:
     def jpegoptim(self):
         self.log("  Compressing with jpegoptim...")
         subprocess.run(['jpegoptim.exe', '--quiet', '--strip-all', self.path])
+
+def initParser():
+    parser = argparse.ArgumentParser()
+    # Must be done to add required augments at the front
+    parser._action_groups.pop()
+
+    required = parser.add_argument_group('required arguments')
+    optional = parser.add_argument_group('optional arguments')
+
+    required.add_argument('-p', '--path', type=str, help="Path to PNG/JPG file or directory of PNGs/JPGs.", required=True)
+    optional.add_argument('-o', '--output', type=str, default='_output', help="Output folder for compressed images. Defaults to '_output' folder in script directory.")
+
+    return parser
     
 def preprocess(path):
     ext = ['.png', '.jpg', '.jpeg']
@@ -198,25 +211,6 @@ def preprocess(path):
     else:
         print("Unsupported file format!")
         return None
-
-# def cmpr_preprocess(path, files):
-#     if (isinstance(files[0], Path)):
-#         return [os.path.join(path, file.name) for file in files]
-
-#     return [os.path.join(path, os.path.basename(file)) for file in files]
-
-def initParser():
-    parser = argparse.ArgumentParser()
-    # Must be done to add required augments at the front
-    parser._action_groups.pop()
-
-    required = parser.add_argument_group('required arguments')
-    optional = parser.add_argument_group('optional arguments')
-
-    required.add_argument('-p', '--path', type=str, help="Path to PNG/JPG file or directory of PNGs/JPGs.", required=True)
-    optional.add_argument('-o', '--output', type=str, default='_output', help="Output folder for compressed images. Defaults to '_output' folder in script directory.")
-
-    return parser
 
 def processArgs(args):
     if args.output == '_output' and not os.path.exists(args.output):
