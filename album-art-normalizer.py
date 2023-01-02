@@ -1,153 +1,247 @@
-import os, shutil, subprocess
-from settings import Settings
-from io import BytesIO
+import shutil, os, argparse, requests, json, time, subprocess
+from randagent import generate_useragent
 from PIL import Image
+from io import BytesIO
+from pathlib import Path
+
+SHRINK_URL = 'https://tinypng.com/web/shrink'
+HEADERS = {
+    'user-agent': 'Mozilla/5.0',
+    'content-type': 'image/png'
+}
 
 class Normalizer:
-    def __init__(self, img_path):
-        self.img = Image.open(img_path)
-        self.img_path = img_path
-        self.width, self.height = self.img.size
+    def __init__(self):
+        self.verbose = True
+        self.name = None
+        self.output = None
+        self.ofiles = []
+        self.img = None
+        self.png_max = 5120
+        self.min_res = 1000
+        self.max_res = 2000
+        self.pad_tolerance = 30
 
-        self.settings = Settings()
-        self.target_dim = self.settings.target_dim
-        self.prequantize_limit = self.settings.prequantize_limit
-        self.resolution_thres = self.settings.resolution_thres
-        self.output_path = self.settings.output_dir + '\\' + os.path.splitext(os.path.basename(img_path))[0]
+    def log(self, text):
+        if (self.verbose):
+            print(text)
 
-    def normalize(self):
-        """Normalizer driver function."""
+    def batch_normalize(self, files):
+        for file in files:
+            self.log(f"Normalizing {os.path.basename(file)} ...")
+            self.name = os.path.splitext(os.path.basename(file))[0]
+            self.normalize(file)
 
-        # Image is already normalized.
-        if (self.width == self.height and max(self.width, self.height) < self.target_dim):
-            self.img.close()
-            shutil.move(self.img_path, self.settings.output_dir)
-            return
-        
-        # Image is either not 1:1 aspect ratio OR dimensions are more than target
-        self.resize_image()
+    def normalize(self, path):
+        self.img = Image.open(path)
+        width, height = self.img.size
+        ext = os.path.splitext(path)[1]
 
-        if (self.width != self.height):
-            self.pad_image()
+        pad = abs(width-height) > self.pad_tolerance
+
+        if pad:
+            self.adaptive_resize()
+            self.pad()
             self.save_png()
-        else:
+        elif width > self.max_res:
+            self.resize()
             self.save_jpeg()
+        elif ext == '.png':
+            self.img = self.img.convert('RGB')
+            self.save_jpeg(q=85)
+        else:
+            self.img.close()
+            shutil.move(path, self.output)
+            self.ofiles.append(os.path.join(self.output, os.path.basename(path)))
+            return
 
         self.img.close()
 
-    def resize_image(self):
-        """
-        Attempts to resize image to a target dimension and target file size. 
-        If transparency required (PNG), reduces dimensions in steps of 100
-        until target file size is met OR breaks resolution threshold.
-        """
-
-        target_dim = self.target_dim
-
-        # Image is 1:1 aspect ratio but dimensions are more than target.
-        if (self.width == self.height and max(self.width, self.height) > target_dim):
-            self.img.thumbnail((target_dim, target_dim), resample = Image.Resampling.LANCZOS)
-            return
-
-        # Image needs padding, will result in PNG.
-        # Resizing in steps to achieve size threshold before quantization.
+    def resize(self):
+        self.log("  Resizing image...")
+        self.img.thumbnail((self.max_res, self.max_res), Image.Resampling.LANCZOS)
+    
+    def adaptive_resize(self):
+        self.log("  Adaptively resizing image...")
         temp_img = self.img.copy()
+        target = self.max_res
+        width, height = temp_img.size
+
+        if max(width, height) > target:
+            temp_img.thumbnail((target, target), Image.Resampling.LANCZOS)
+        else:
+            target = max(width, height)
 
         while True:
-            width, height = temp_img.size
-
-            if (max(width, height) > target_dim):
-                temp_img.thumbnail((target_dim, target_dim), resample = Image.Resampling.LANCZOS)
-            else:
-                target_dim = max(width, height)
-
             temp_store = BytesIO()
-            temp_img.save(temp_store, 'png', optimize = True)
+            temp_img.save(temp_store, 'png', optimize=True)
+            temp_size = temp_store.tell() // (1<<10)
 
-            temp_store_size_KB = temp_store.tell() // 1024
-
-            # Resizes actual copy if filesize is under prequantize limit.
-            # Force resize if resolution goes under threshold regardless of filesize.
-            if (temp_store_size_KB < self.prequantize_limit or (target_dim - 100) < self.resolution_thres):
+            if (temp_size <= self.png_max or target < self.min_res):
                 temp_img.close()
-                self.img.thumbnail((target_dim, target_dim), resample = Image.Resampling.LANCZOS)
-                self.update_dim()
+                self.img.thumbnail((target, target), Image.Resampling.LANCZOS)
                 return
-            else:
-                target_dim -= 100
 
-    def update_dim(self):
-        self.width, self.height = self.img.size
+            target -= 50
+            temp_img = self.img.copy()
+            temp_img.thumbnail((target, target), Image.Resampling.LANCZOS)
 
-    def pad_image(self):
-        """Pads non 1:1 aspect ratio image with transparency."""
+    def pad(self):
+        self.log("  Padding image...")
 
-        canvas_dim = max(self.width, self.height)
+        width, height = self.img.size
+        dim = max(width, height)
 
-        img_pad = Image.new('RGBA', (canvas_dim, canvas_dim), (0, 0, 0, 0))
+        img_pad = Image.new('RGBA', (dim, dim), (0, 0, 0, 0))
         
-        if (self.width > self.height):
-            img_pad.paste(self.img, (0, (self.width - self.height) // 2))
+        if (width > height):
+            img_pad.paste(self.img, (0, (width - height) // 2))
         else:
-            img_pad.paste(self.img, ((self.height - self.width) // 2), 0)
+            img_pad.paste(self.img, ((height - width) // 2), 0)
 
         self.img = img_pad
 
     def save_png(self):
-        """Saves the image as a PNG file."""
+        ofile = f"{self.output}/{self.name}.png"
+        self.ofiles.append(ofile)
+        self.img.save(ofile, optimize = True)
 
-        self.img.save(self.output_path + '.png', optimize = True)
-
-    def save_jpeg(self):
-        """Saves the image as a JPEG file."""
-
-        self.img.save(self.output_path + '.jpeg', optimize = True, quality = 'keep')
+    def save_jpeg(self, q='keep'):
+        ofile = f"{self.output}/{self.name}.jpg"
+        self.ofiles.append(ofile)
+        self.img.save(ofile, optimize = True, quality = q)
 
 class Compressor:
-    def __init__(self, img_path) -> None:
-        self.img_path = img_path
-        self.ext = os.path.splitext(img_path)[1]
+    def __init__(self):
+        self.verbose = True
+        # self.mode = 'tinypng'
+        self.path = None
+        self.raw_data = None
+        self.output = None
+
+    def log(self, text):
+        if (self.verbose):
+            print(text)
+
+    def batch_compress(self, files):
+        for file in files:
+            self.path = file
+            self.compress()
 
     def compress(self):
-        if (self.ext == '.png'):
-            self.quantize_image()
-            self.optipng()
-        elif (self.ext == '.jpeg'):
+        self.log(f"Compressing {os.path.basename(self.path)} ...")
+
+        ext = os.path.splitext(self.path)[1]
+
+        if (ext == '.png'):
+            self.tinypng()
+        else:
             self.jpegoptim()
 
-    def quantize_image(self):
-        """Quantizes PNG files to 8bit colour space."""
+    def tinypng(self):
+        if not self.raw_data:
+            raw_data = open(self.path, 'rb').read()
 
-        settings = Settings()
+        self.log("  Posting request to Tinypng...")
 
-        subprocess.run(['pngquant.exe', '--force', '--ext=.png', '--speed=%d' % (settings.speed), '--floyd=%d' % (settings.floyd), self.img_path])
+        HEADERS['user-agent'] = generate_useragent()
 
-    def optipng(self):
-        """Lossless PNG compression. Reduces size of IDAT data stream."""
+        response = requests.post(
+            SHRINK_URL,
+            headers = HEADERS,
+            data=raw_data
+        )
 
-        subprocess.run(['optipng.exe', '-silent', self.img_path])
+        dct = json.loads(response.text)
+
+        if 'error' in dct:
+            self.log("  Tinypng did not respond, retrying...")
+            time.sleep(3)
+            return self.tinypng()
+
+        output = dct['output']
+        self.tinypng_save(output['url'])
+
+    def tinypng_save(self, url):
+        raw_data = requests.get(
+            url,
+            headers={'user-agent': generate_useragent()}
+        ).content
+
+        self.log("  Saving file from Tinypng...")
+
+        fname = os.path.basename(self.path)
+        fpath = os.path.join(self.output, fname)
+
+        os.remove(fpath)
+
+        with open(fpath, 'wb+') as png:
+            png.write(raw_data)
 
     def jpegoptim(self):
-        """Lossless JPEG Compression. Optimizes Huffman tables."""
+        self.log("  Compressing with jpegoptim...")
+        subprocess.run(['jpegoptim.exe', '--quiet', '--strip-all', self.path])
+    
+def preprocess(path):
+    ext = ['.png', '.jpg', '.jpeg']
 
-        subprocess.run(['jpegoptim.exe', '--quiet', '--strip-all', self.img_path])
+    if not os.path.exists(path):
+        print(f"{path} does not exist!")
+        return None
+    
+    if os.path.isdir(path):
+        files = [file for file in Path(path).rglob('*') if os.path.splitext(file)[1] in ext]
+        return files
 
-def batch_process():
-    """Processes all images in a given directory."""
+    if os.path.splitext(path)[1] in ext:
+        return [path]
+    else:
+        print("Unsupported file format!")
+        return None
 
-    settings = Settings()
-    valid_ext = settings.valid_ext
+# def cmpr_preprocess(path, files):
+#     if (isinstance(files[0], Path)):
+#         return [os.path.join(path, file.name) for file in files]
 
-    to_process = [file for file in os.listdir(settings.input_dir) if os.path.splitext(file)[1] in valid_ext]
+#     return [os.path.join(path, os.path.basename(file)) for file in files]
 
-    for img in to_process:
-        img_edit = Normalizer(settings.input_dir + '\\' + img)
-        img_edit.normalize()
+def initParser():
+    parser = argparse.ArgumentParser()
+    # Must be done to add required augments at the front
+    parser._action_groups.pop()
 
-    to_compress = [file for file in os.listdir(settings.output_dir) if os.path.splitext(file)[1] in valid_ext]
+    required = parser.add_argument_group('required arguments')
+    optional = parser.add_argument_group('optional arguments')
 
-    for img in to_compress:
-        img_compress = Compressor(settings.output_dir + '\\' + img)
-        img_compress.compress()
+    required.add_argument('-p', '--path', type=str, help="Path to PNG/JPG file or directory of PNGs/JPGs.", required=True)
+    optional.add_argument('-o', '--output', type=str, default='_output', help="Output folder for compressed images. Defaults to '_output' folder in script directory.")
 
-batch_process()
+    return parser
+
+def processArgs(args):
+    if args.output == '_output' and not os.path.exists(args.output):
+        os.mkdir(args.output)
+    elif not os.path.isdir(args.output):
+        print(f"{args.output} is not a valid output directory!")  
+        exit(0)
+
+    return args
+
+def begin(args):
+    files = preprocess(args.path)
+
+    if not files:
+        exit(0)
+
+    nml = Normalizer()
+    nml.output = args.output
+    nml.batch_normalize(files)
+
+    cmpr = Compressor()
+    cmpr.output = args.output
+    cmpr.batch_compress(nml.ofiles)
+
+if __name__ == '__main__':
+    parser = initParser()
+    args = processArgs(parser.parse_args())
+    begin(args)

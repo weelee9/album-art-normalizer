@@ -3,14 +3,19 @@
 ## Features
  - Resizes album art to target dimensions.
  - Pads non 1:1 aspect ratio album art with transparency.
- - Compresses PNGs using quantization with pngquant, and lossless compression with optipng.
- - Lossless compression for JPEGs using jpegoptim.
+ - Lossy PNG compression using Tinypng.
+ - Lossless JPEG compression using jpegoptim.
  
 ## Usage
- 1. Place pngquant, optipng, and jpegoptim executables in the same directory as script.
- 2. Direct the input and output directories in settings.py (preferably in the same directory).
- 3. Run the script.
+ 1. Place jpegoptim executable in the same directory as script.
+ 2. Run the script. -h or --help for arguments.
  
 ## To-do
- - Verbose mode.
  - Image upscaling for low resolution album art.
+
+## Changelog
+# 2nd January 2023
+ - Code overhaul
+ - Removed local PNG compression (pngquant and optipng)
+ - Added PNG compression using Tinypng without API key (based on [TinyPyng](https://github.com/elmoiv/tinypyng))
+ - Added argument parser
