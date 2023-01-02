@@ -14,7 +14,7 @@
  - Image upscaling for low resolution album art.
 
 ## Changelog
-# 2nd January 2023
+### 2nd January 2023
  - Code overhaul
  - Removed local PNG compression (pngquant and optipng)
  - Added PNG compression using Tinypng without API key (based on [TinyPyng](https://github.com/elmoiv/tinypyng))
