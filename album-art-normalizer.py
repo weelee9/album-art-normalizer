@@ -93,6 +93,9 @@ class Normalizer:
         dim = max(width, height)
 
         img_pad = Image.new('RGBA', (dim, dim), (0, 0, 0, 0))
+
+        if (self.img.mode != 'RGBA'):
+            self.img = self.img.convert('RGBA')
         
         if (width > height):
             img_pad.paste(self.img, (0, (width - height) // 2))
