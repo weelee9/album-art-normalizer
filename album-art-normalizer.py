@@ -123,7 +123,7 @@ class Compressor:
         self.path = None
         self.raw_data = None
         self.output = None
-        self.threshold = 900
+        self.threshold = 0
 
     def log(self, text):
         if (self.verbose):
@@ -143,8 +143,10 @@ class Compressor:
             self.jpegoptim()
 
         # Left with PNGs here
-        if os.path.getsize(self.path) // (1<<10) < self.threshold:
+        if os.path.getsize(self.path) // (1<<10) > self.threshold:
             self.tinypng()
+        else:
+            print(f"  File size under {self.threshold}KB threshold. Skipping file...")
 
     def tinypng(self):
         if not self.raw_data:
