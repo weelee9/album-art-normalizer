@@ -12,6 +12,7 @@
  
 ## To-do
  - Image upscaling for low resolution album art.
+ - Add arguments to encompass all available options.
 
 ## Changelog
 ### 2nd January 2023
