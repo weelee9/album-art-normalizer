@@ -16,11 +16,12 @@ class Normalizer:
         self.name = None
         self.output = None
         self.ofiles = []
+        self.del_original = True
         self.img = None
         self.png_max = 5120
         self.min_res = 1000
         self.max_res = 2000
-        self.pad_tolerance = 30
+        self.pad_tolerance = 0
 
     def log(self, text):
         if (self.verbose):
@@ -56,6 +57,7 @@ class Normalizer:
             return
 
         self.img.close()
+        if self.del_original: os.remove(path)
 
     def resize(self):
         self.log("  Resizing image...")
@@ -65,6 +67,7 @@ class Normalizer:
         self.log("  Adaptively resizing image...")
         temp_img = self.img.copy()
         target = self.max_res
+        step = 50
         width, height = temp_img.size
 
         if max(width, height) > target:
@@ -77,12 +80,12 @@ class Normalizer:
             temp_img.save(temp_store, 'png', optimize=True)
             temp_size = temp_store.tell() // (1<<10)
 
-            if (temp_size <= self.png_max or target < self.min_res):
+            if (temp_size <= self.png_max or target-step < self.min_res):
                 temp_img.close()
                 self.img.thumbnail((target, target), Image.Resampling.LANCZOS)
                 return
 
-            target -= 50
+            target -= step
             temp_img = self.img.copy()
             temp_img.thumbnail((target, target), Image.Resampling.LANCZOS)
 
@@ -98,9 +101,9 @@ class Normalizer:
             self.img = self.img.convert('RGBA')
         
         if (width > height):
-            img_pad.paste(self.img, (0, (width - height) // 2))
+            img_pad.paste(self.img, (0, (width-height) // 2))
         else:
-            img_pad.paste(self.img, ((height - width) // 2), 0)
+            img_pad.paste(self.img, ((height-width) // 2, 0))
 
         self.img = img_pad
 
@@ -117,10 +120,10 @@ class Normalizer:
 class Compressor:
     def __init__(self):
         self.verbose = True
-        # self.mode = 'tinypng'
         self.path = None
         self.raw_data = None
         self.output = None
+        self.threshold = 900
 
     def log(self, text):
         if (self.verbose):
@@ -136,10 +139,12 @@ class Compressor:
 
         ext = os.path.splitext(self.path)[1]
 
-        if (ext == '.png'):
-            self.tinypng()
-        else:
+        if ext == '.jpeg' or ext == '.jpg':
             self.jpegoptim()
+
+        # Left with PNGs here
+        if os.path.getsize(self.path) // (1<<10) < self.threshold:
+            self.tinypng()
 
     def tinypng(self):
         if not self.raw_data:
