@@ -11,6 +11,7 @@
  2. Run the script. -h or --help for arguments.
  
 ## To-do
+ - Fix padding behaviour
  - Image upscaling for low resolution album art.
  - Add arguments to encompass all available options.
 
