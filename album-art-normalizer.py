@@ -21,10 +21,10 @@ class Normalizer:
         self.png_max = 5120
         self.min_res = 1000
         self.max_res = 2000
-        self.pad_tolerance = 0
+        self.pad_tolerance = 5
 
     def log(self, text):
-        if (self.verbose):
+        if self.verbose:
             print(text)
 
     def batch_normalize(self, files):
@@ -48,9 +48,9 @@ class Normalizer:
             self.resize()
             self.save_jpeg()
         elif ext == '.png':
-            self.img = self.img.convert('RGB')
             self.save_jpeg(q=85)
         else:
+            self.log("  Image already normalized. Moving source file to output folder...")
             self.img.close()
             shutil.move(path, self.output)
             self.ofiles.append(os.path.join(self.output, os.path.basename(path)))
@@ -108,11 +108,18 @@ class Normalizer:
         self.img = img_pad
 
     def save_png(self):
+        self.log("  Saving as PNG...")
+
         ofile = f"{self.output}/{self.name}.png"
         self.ofiles.append(ofile)
         self.img.save(ofile, optimize = True)
 
     def save_jpeg(self, q='keep'):
+        self.log("  Saving as JPEG...")
+
+        if (self.img.mode != 'RGB'):
+            self.img = self.img.convert('RGB')
+
         ofile = f"{self.output}/{self.name}.jpg"
         self.ofiles.append(ofile)
         self.img.save(ofile, optimize = True, quality = q)
@@ -141,6 +148,7 @@ class Compressor:
 
         if ext == '.jpeg' or ext == '.jpg':
             self.jpegoptim()
+            return
 
         # Left with PNGs here
         if os.path.getsize(self.path) // (1<<10) > self.threshold:
