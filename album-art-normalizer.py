@@ -10,6 +10,7 @@ HEADERS = {
     'content-type': 'image/png'
 }
 
+#Fix padding and transparency check
 class Normalizer:
     def __init__(self):
         self.verbose = True
@@ -21,15 +22,15 @@ class Normalizer:
         self.png_max = 5120
         self.min_res = 1000
         self.max_res = 2000
-        self.pad_tolerance = 5
+        self.pad_tolerance = 100
 
     def log(self, text):
         if self.verbose:
             print(text)
 
     def batch_normalize(self, files):
-        for file in files:
-            self.log(f"Normalizing {os.path.basename(file)} ...")
+        for index, file in enumerate(files):
+            self.log(f"({index+1}/{len(files)}) Normalizing {os.path.basename(file)} ...")
             self.name = os.path.splitext(os.path.basename(file))[0]
             self.normalize(file)
 
@@ -38,26 +39,43 @@ class Normalizer:
         width, height = self.img.size
         ext = os.path.splitext(path)[1]
 
-        pad = abs(width-height) > self.pad_tolerance
+        self.log(f"  {width}x{height}")
 
-        if pad:
-            self.adaptive_resize()
-            self.pad()
-            self.save_png()
-        elif width > self.max_res:
-            self.resize()
-            self.save_jpeg()
-        elif ext == '.png':
-            self.save_jpeg(q=85)
-        else:
+        if abs(width-height) <= self.pad_tolerance and max(width, height) <= self.max_res and ext != '.png':
             self.log("  Image already normalized. Moving source file to output folder...")
             self.img.close()
             shutil.move(path, self.output)
             self.ofiles.append(os.path.join(self.output, os.path.basename(path)))
             return
 
+        if abs(width-height) > self.pad_tolerance:
+            self.adaptive_resize()
+            self.pad()
+            self.save_png()
+        else:
+            self.resize()
+
+            if self.hasTransparency():
+                self.save_png()
+            elif ext == '.png':
+                self.save_jpeg(q=85)
+            else: 
+                self.save_jpeg()
+
         self.img.close()
         if self.del_original: os.remove(path)
+
+    def hasTransparency(self):
+        if self.img.mode == 'RGBA' and self.img.getextrema()[3][0] < 255:
+            return True
+
+        if 'transparency' in self.img.info:
+            tp = self.img.info['transparency']
+
+            for _, index in self.img.getcolors():
+                if index == tp: return True
+
+        return False
 
     def resize(self):
         self.log("  Resizing image...")
@@ -80,7 +98,7 @@ class Normalizer:
             temp_img.save(temp_store, 'png', optimize=True)
             temp_size = temp_store.tell() // (1<<10)
 
-            if (temp_size <= self.png_max or target-step < self.min_res):
+            if temp_size <= self.png_max or target-step < self.min_res:
                 temp_img.close()
                 self.img.thumbnail((target, target), Image.Resampling.LANCZOS)
                 return
@@ -91,14 +109,13 @@ class Normalizer:
 
     def pad(self):
         self.log("  Padding image...")
-
+        
         width, height = self.img.size
         dim = max(width, height)
 
         img_pad = Image.new('RGBA', (dim, dim), (0, 0, 0, 0))
 
-        if self.img.mode != 'RGBA':
-            self.img = self.img.convert('RGBA')
+        if self.img.mode != 'RGBA': self.img = self.img.convert('RGBA')
         
         if width > height:
             img_pad.paste(self.img, (0, (width-height) // 2))
@@ -137,13 +154,12 @@ class Compressor:
             print(text)
 
     def batch_compress(self, files):
-        for file in files:
+        for index, file in enumerate(files):
+            self.log(f"({index+1}/{len(files)}) Compressing {os.path.basename(file)} ...")
             self.path = file
             self.compress()
 
     def compress(self):
-        self.log(f"Compressing {os.path.basename(self.path)} ...")
-
         ext = os.path.splitext(self.path)[1]
 
         if ext == '.jpeg' or ext == '.jpg':
