@@ -23,6 +23,7 @@ class Normalizer:
         self.max_res = 2000
         self.jpeg_quality = 85
         self.pad_tolerance = 5
+        self.pad_tp_thres = 100
 
     def log(self, text):
         if self.verbose:
@@ -60,7 +61,7 @@ class Normalizer:
 
         if diff <= self.pad_tolerance:
             self.log(f"  Difference of {diff} is under tolerance of {self.pad_tolerance}. Skipping...")
-        elif diff > 100:
+        elif diff > self.pad_tp_thres:
             self.adaptive_resize()
             self.pad_with_colour('tp')
         else:
@@ -257,6 +258,23 @@ def processArgs(args):
     elif not os.path.isdir(args.output):
         print(f"{args.output} is not a valid output directory!")  
         exit(0)
+
+    output_dir = Path(args.output).rglob('*')
+
+    if output_dir:
+        while True:
+            ipt = input("Output directory is not empty. Delete all files in output directory? (Y/N) ")
+
+            if ipt.lower() == 'y':
+                print("Deleting files...")
+                for file in output_dir:
+                    os.remove(file)
+                
+                break
+            elif ipt.lower() == 'n':
+                break
+            else:
+                print("Invalid input. Please try again.")
 
     return args
 
